@@ -1,0 +1,29 @@
+{
+  "poll_concurrency": 4,
+  "queues": {
+    "type": "aws_sqs",
+    "config": [
+      {
+        "name": "high-priority",
+        "visibility_timeout": 600,
+        "endpoint": "http://localhost:4566",
+        "region": "us-west-2"
+      },
+      {
+        "name": "low-priority",
+        "visibility_timeout": 600,
+        "endpoint": "http://localhost:4566",
+        "region": "us-west-2"
+      }
+    ]
+  },
+  "processor": {
+    "type": "http_raw",
+    "config": {
+      "subscriber_url": "http://localhost:5000/",
+      "method": "POST",
+      "timeout": 570,
+      "fatal_codes": [412, 450]
+    }
+  }
+}

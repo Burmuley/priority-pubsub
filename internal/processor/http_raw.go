@@ -15,18 +15,18 @@ const (
 	RawDefaultTimeout    = 120
 )
 
-type RawConfig struct {
-	SubscriberUrl string
-	Method        string
-	Timeout       int
-	FatalCodes    []int
+type HttpRawConfig struct {
+	SubscriberUrl string `koanf:"subscriber_url"`
+	Method        string `koanf:"method"`
+	Timeout       int    `koanf:"timeout"`
+	FatalCodes    []int  `koanf:"fatal_codes"`
 }
 
-type Raw struct {
-	config RawConfig
+type HttpRaw struct {
+	config HttpRawConfig
 }
 
-func NewRaw(config RawConfig) (*Raw, error) {
+func NewHttpRaw(config HttpRawConfig) (*HttpRaw, error) {
 	if config.Method == "" {
 		config.Method = RawDefaultHTTPMethod
 	}
@@ -45,14 +45,14 @@ func NewRaw(config RawConfig) (*Raw, error) {
 		config.Timeout = RawDefaultTimeout
 	}
 
-	raw := &Raw{
+	raw := &HttpRaw{
 		config: config,
 	}
 
 	return raw, nil
 }
 
-func (r *Raw) Run(ctx context.Context, msg queue.Message) error {
+func (r *HttpRaw) Run(ctx context.Context, msg queue.Message) error {
 	client := http.Client{
 		Timeout: time.Duration(r.config.Timeout) * time.Second,
 	}

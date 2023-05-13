@@ -1,0 +1,25 @@
+{
+  "poll_concurrency": 4,
+  "queues": {
+    "type": "gcp_pubsub",
+    "config": [
+      {
+        "subscription_id": "projects/test-project-156022/subscriptions/high-priority-sub",
+        "ack_deadline": 600
+      },
+      {
+        "subscription_id": "projects/test-project-156022/subscriptions/low-priority-sub",
+        "ack_deadline": 600
+      }
+    ]
+  },
+  "processor": {
+    "type": "http_raw",
+    "config": {
+      "subscriber_url": "http://localhost:5000/",
+      "method": "POST",
+      "timeout": 570,
+      "fatal_codes": [412, 450]
+    }
+  }
+}

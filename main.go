@@ -2,8 +2,13 @@ package main
 
 import (
 	"context"
+	"flag"
+	"github.com/Burmuley/priority-pubsub/internal/helpers"
 	"github.com/Burmuley/priority-pubsub/internal/processor"
 	"github.com/Burmuley/priority-pubsub/internal/queue"
+	koanfjson "github.com/knadh/koanf/parsers/json"
+	koanffile "github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 	"log"
 	"os"
 	"os/signal"
@@ -12,63 +17,102 @@ import (
 )
 
 var (
-	logInfo = log.New(os.Stdout, "[PRIORITY_PUBSUB][INFO] ", log.LstdFlags|log.Lmsgprefix)
-	logErr  = log.New(os.Stderr, "[PRIORITY_PUBSUB][ERROR] ", log.LstdFlags|log.Lmsgprefix)
+	logInfo = log.New(os.Stdout, "[PRIORITY_PUBSUB] [INFO] ", log.LstdFlags|log.Lmsgprefix)
+	logErr  = log.New(os.Stderr, "[PRIORITY_PUBSUB] [ERROR] ", log.LstdFlags|log.Lmsgprefix)
 )
 
 func main() {
+	var queueConfig []any
+	var processorConfig any
 
 	logInfo.Println("Priority Pub/Sub started")
-	// TODO: read config from file
-	//config := make(map[string]string)
 
-	// TODO: rewrite this manual setup
-	// setup queues
-	queues := make([]queue.Queue, 0, 2)
-	queuesNames := []string{"high-priority", "low-priority"}
+	// set config file name from cmd flag "config"
+	cfgFlag := flag.String("config", "config.json", "path to the configuration file")
+	flag.Parse()
+	configFileName := *cfgFlag
 
-	for _, qn := range queuesNames {
-		qCfg := queue.SQSConfig{
-			Name:              qn,
-			VisibilityTimeout: 120,
-			Endpoint:          "http://localhost:4566",
-			Region:            "us-west-2",
+	kfg := koanf.New(".")
+	cfgFile := koanffile.Provider(configFileName)
+	kParser := koanfjson.Parser()
+	if err := kfg.Load(cfgFile, kParser); err != nil {
+		logErr.Fatalf("error loading configuration file: %s\n", err.Error())
+	}
+
+	// reading common parameters
+	pollConcurrency := kfg.Int("poll_concurrency")
+
+	// getting queues configuration
+	qType := kfg.String("queues.type")
+
+	switch qType {
+	case "aws_sqs":
+		var qConfig []queue.AwsSQSConfig
+		if err := kfg.Unmarshal("queues.config", &qConfig); err != nil {
+			logErr.Fatalf("error parsing queues configuration: %s\n", err.Error())
 		}
-		q, err := queue.NewSQSQueue(qCfg)
+		helpers.CopySliceElems(qConfig, &queueConfig)
+	case "gcp_pubsub":
+		var qConfig []queue.GcpPubSubConfig
+		if err := kfg.Unmarshal("queues.config", &qConfig); err != nil {
+			logErr.Fatalf("error parsing queues configuration: %s\n", err.Error())
+		}
+		helpers.CopySliceElems(qConfig, &queueConfig)
+	default:
+		logErr.Fatal("unknown queue type %s", qType)
+	}
+
+	// getting processor configuration
+	prType := kfg.String("processor.type")
+
+	switch prType {
+	case "http_raw":
+		prConfig := processor.HttpRawConfig{}
+		if err := kfg.Unmarshal("processor.config", &prConfig); err != nil {
+			logErr.Fatalf("error parsing processor configuration: %s\n", err.Error())
+		}
+		processorConfig = prConfig
+	default:
+		logErr.Fatalf("unknown processor type %s\n", prType)
+	}
+
+	procCtx, procCancel := context.WithCancel(context.Background())
+	queueCtx, queueCancel := context.WithCancel(context.Background())
+
+	queues := make([]queue.Queue, 0, 2)
+	qFab := queue.Fabric{}
+	for _, v := range queueConfig {
+		q, err := qFab.Get(queueCtx, qType, v)
 		if err != nil {
-			logErr.Fatal(err)
+			logErr.Fatalf("error adding queue: %s\n", err.Error())
 		}
 		queues = append(queues, q)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
-	procConfig := processor.RawConfig{
-		SubscriberUrl: "http://localhost:5000/",
-		Method:        "POST",
-		Timeout:       240,
-		FatalCodes:    []int{450},
-	}
-	proc, err := processor.NewRaw(procConfig)
+	prFab := processor.Fabric{}
+	proc, err := prFab.Get(prType, processorConfig)
 	if err != nil {
-		logErr.Fatal(err)
+		logErr.Fatal("error adding processor: %s", err.Error())
 	}
 
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
 	wg := &sync.WaitGroup{}
 
-	go Poller(ctx, wg, queues, proc)
-	wg.Add(1)
+	for i := 0; i < pollConcurrency; i++ {
+		go Poller(procCtx, wg, queues, proc)
+		wg.Add(1)
+	}
 
 	for {
 		select {
-		case sig := <-sigs:
-			logErr.Printf("signal received: %s\n", sig)
-			logErr.Println("interrupting all jobs")
-			cancel()
+		case sig := <-signals:
+			logInfo.Printf("signal received: %s\n", sig)
+			logInfo.Println("interrupting all jobs")
+			procCancel()
 			wg.Wait()
+			queueCancel()
 			logInfo.Println("cancelled all pollers")
 			return
 		}

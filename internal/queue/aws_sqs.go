@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
@@ -9,49 +10,49 @@ import (
 )
 
 const (
-	SQSDefaultVisibilityTimeout = 30
+	AWSSQSDefaultVisibilityTimeout = 30
 )
 
-type SQSConfig struct {
-	Name              string
-	VisibilityTimeout int64
-	Endpoint          string
-	Region            string
+type AwsSQSConfig struct {
+	Name              string `koanf:"name"`
+	VisibilityTimeout int64  `koanf:"visibility_timeout"`
+	Endpoint          string `koanf:"endpoint"`
+	Region            string `koanf:"region"`
 }
 
-type SQSMessage struct {
+type AwsSQSMessage struct {
 	messageId     string
 	receiptHandle string
 	queueName     string
 	data          []byte
 }
 
-func (m SQSMessage) Id() string {
+func (m AwsSQSMessage) Id() string {
 	return m.messageId
 }
 
-func (m SQSMessage) QueueId() string {
+func (m AwsSQSMessage) QueueId() string {
 	return m.queueName
 }
 
-func (m SQSMessage) Data() []byte {
+func (m AwsSQSMessage) Data() []byte {
 	return m.data
 }
 
-type SQSQueue struct {
+type AwsSQSQueue struct {
 	queueName         string
 	queueUrl          string
 	session           *session.Session
 	visibilityTimeout int64
 }
 
-func NewSQSQueue(config SQSConfig) (Queue, error) {
+func NewSQSQueue(_ context.Context, config AwsSQSConfig) (Queue, error) {
 	if config.Name == "" {
-		return nil, fmt.Errorf("%w: parameter 'SQSConfig.Name' is mandatory", ErrConfig)
+		return nil, fmt.Errorf("%w: parameter 'AwsSQSConfig.Name' is mandatory", ErrConfig)
 	}
 
 	if config.VisibilityTimeout == 0 {
-		config.VisibilityTimeout = SQSDefaultVisibilityTimeout
+		config.VisibilityTimeout = AWSSQSDefaultVisibilityTimeout
 	}
 
 	awsCfg := &aws.Config{
@@ -69,7 +70,7 @@ func NewSQSQueue(config SQSConfig) (Queue, error) {
 
 	sess := session.Must(session.NewSession(awsCfg))
 
-	q := &SQSQueue{
+	q := &AwsSQSQueue{
 		queueName:         config.Name,
 		visibilityTimeout: config.VisibilityTimeout,
 		session:           sess,
@@ -82,11 +83,11 @@ func NewSQSQueue(config SQSConfig) (Queue, error) {
 	return q, nil
 }
 
-func (s *SQSQueue) QueueId() string {
+func (s *AwsSQSQueue) QueueId() string {
 	return s.queueName
 }
 
-func (s *SQSQueue) ReceiveMessage() (Message, error) {
+func (s *AwsSQSQueue) ReceiveMessage() (Message, error) {
 	svc := sqs.New(s.session)
 	msgNum := int64(1)
 
@@ -106,7 +107,7 @@ func (s *SQSQueue) ReceiveMessage() (Message, error) {
 
 	sqsMsg := output.Messages[0]
 
-	msg := &SQSMessage{
+	msg := &AwsSQSMessage{
 		messageId:     *sqsMsg.MessageId,
 		receiptHandle: *sqsMsg.ReceiptHandle,
 		queueName:     s.queueName,
@@ -116,10 +117,10 @@ func (s *SQSQueue) ReceiveMessage() (Message, error) {
 	return msg, nil
 }
 
-func (s *SQSQueue) DeleteMessage(m Message) error {
-	msg, ok := m.(*SQSMessage)
+func (s *AwsSQSQueue) DeleteMessage(m Message) error {
+	msg, ok := m.(*AwsSQSMessage)
 	if !ok {
-		return errors.New("message should be of type SQSMessage")
+		return errors.New("message should be of type AwsSQSMessage")
 	}
 
 	svc := sqs.New(s.session)
@@ -136,10 +137,10 @@ func (s *SQSQueue) DeleteMessage(m Message) error {
 	return nil
 }
 
-func (s *SQSQueue) ReturnMessage(m Message) error {
-	msg, ok := m.(*SQSMessage)
+func (s *AwsSQSQueue) ReturnMessage(m Message) error {
+	msg, ok := m.(*AwsSQSMessage)
 	if !ok {
-		return errors.New("message should be of type SQSMessage")
+		return errors.New("message should be of type AwsSQSMessage")
 	}
 
 	svc := sqs.New(s.session)
@@ -158,7 +159,7 @@ func (s *SQSQueue) ReturnMessage(m Message) error {
 	return nil
 }
 
-func (s *SQSQueue) refreshQueueUrl() error {
+func (s *AwsSQSQueue) refreshQueueUrl() error {
 	svc := sqs.New(s.session)
 
 	output, err := svc.GetQueueUrl(&sqs.GetQueueUrlInput{QueueName: &s.queueName})

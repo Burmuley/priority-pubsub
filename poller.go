@@ -27,9 +27,9 @@ func Poller(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc 
 			message = nil
 			message, err = receiveMessage(queues)
 			if err != nil {
-				if errors.As(err, &queue.ErrNoMessages) {
-					logErr.Println("no messages received from all queues")
-					time.Sleep(5 * time.Second)
+				if errors.Is(err, queue.ErrNoMessages) {
+					logInfo.Println("no messages received from all queues")
+					time.Sleep(2 * time.Second)
 					continue
 				}
 
@@ -87,7 +87,7 @@ func receiveMessage(queues []queue.Queue) (queue.Message, error) {
 		message, err := q.ReceiveMessage()
 
 		if err != nil {
-			if errors.As(err, &queue.ErrNoMessages) {
+			if errors.Is(err, queue.ErrNoMessages) {
 				continue
 			}
 			return nil, err
