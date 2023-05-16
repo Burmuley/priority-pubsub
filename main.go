@@ -55,8 +55,11 @@ func main() {
 		logErr.Fatalf("error loading configuration file: %s\n", err.Error())
 	}
 
-	// reading common parameters
-	pollConcurrency := kfg.Int("poll_concurrency")
+	// reading poller parameters
+	pollConfig := PollerConfig{}
+	if err := kfg.Unmarshal("poller", &pollConfig); err != nil {
+		logErr.Fatalf("error parsing 'poller' configuration: %s", err.Error())
+	}
 
 	// getting queues configuration
 	qType := kfg.String("queues.type")
@@ -116,8 +119,16 @@ func main() {
 
 	wg := &sync.WaitGroup{}
 
-	for i := 0; i < pollConcurrency; i++ {
-		go Poller(procCtx, wg, queues, proc)
+	var pollFunc Poller
+	{
+		var err error
+		if pollFunc, err = PollerFabric(pollConfig.Type); err != nil {
+			logErr.Fatalf("error initializing poller: %s", err.Error())
+		}
+	}
+
+	for i := 0; i < pollConfig.Concurrency; i++ {
+		go pollFunc(procCtx, wg, queues, proc)
 		wg.Add(1)
 	}
 

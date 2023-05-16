@@ -1,5 +1,8 @@
 {
-  "poll_concurrency": 4,
+  "poller": {
+    "type": "simple",
+    "concurrency": 4
+  },
   "queues": {
     "type": "aws_sqs",
     "config": [

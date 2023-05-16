@@ -19,13 +19,30 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/Burmuley/priority-pubsub/internal/processor"
 	"github.com/Burmuley/priority-pubsub/internal/queue"
 	"sync"
 	"time"
 )
 
-func Poller(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc processor.Processor) {
+type PollerConfig struct {
+	Type        string `koanf:"type"`
+	Concurrency int    `koanf:"concurrency"`
+}
+
+type Poller func(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc processor.Processor)
+
+func PollerFabric(poller string) (Poller, error) {
+	switch poller {
+	case "simple":
+		return SimplePoller, nil
+	}
+
+	return nil, fmt.Errorf("no such Poller function %q", poller)
+}
+
+func SimplePoller(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc processor.Processor) {
 	var message queue.Message
 	var procErr, err error
 
