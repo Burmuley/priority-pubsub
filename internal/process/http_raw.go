@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package processor
+package process
 
 import (
 	"bytes"

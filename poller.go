@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Burmuley/priority-pubsub/internal/processor"
+	"github.com/Burmuley/priority-pubsub/internal/process"
 	"github.com/Burmuley/priority-pubsub/internal/queue"
 	"sync"
 	"time"
@@ -31,7 +31,7 @@ type PollerConfig struct {
 	Concurrency int    `koanf:"concurrency"`
 }
 
-type Poller func(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc processor.Processor)
+type Poller func(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc process.Processor)
 
 func PollerFabric(poller string) (Poller, error) {
 	switch poller {
@@ -42,7 +42,7 @@ func PollerFabric(poller string) (Poller, error) {
 	return nil, fmt.Errorf("no such Poller function %q", poller)
 }
 
-func SimplePoller(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc processor.Processor) {
+func SimplePoller(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc process.Processor) {
 	var message queue.Message
 	var procErr, err error
 
@@ -78,7 +78,7 @@ func SimplePoller(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue,
 			procErr = proc.Run(ctx, message)
 
 			if procErr != nil {
-				if errors.As(err, &processor.ErrFatal) {
+				if errors.As(err, &process.ErrFatal) {
 					logErr.Printf("fatal error occurred during task processing: %s\n", procErr.Error())
 					if err := messageQueue.DeleteMessage(message); err != nil {
 						logErr.Printf("error deleting message %q to the queue %q: %s\n", message.Id(), message.QueueId(), err)

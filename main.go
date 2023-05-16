@@ -20,7 +20,7 @@ import (
 	"context"
 	"flag"
 	"github.com/Burmuley/priority-pubsub/internal/helpers"
-	"github.com/Burmuley/priority-pubsub/internal/processor"
+	"github.com/Burmuley/priority-pubsub/internal/process"
 	"github.com/Burmuley/priority-pubsub/internal/queue"
 	koanfjson "github.com/knadh/koanf/parsers/json"
 	koanffile "github.com/knadh/koanf/providers/file"
@@ -81,14 +81,14 @@ func main() {
 		logErr.Fatal("unknown queue type %s", qType)
 	}
 
-	// getting processor configuration
+	// getting process configuration
 	prType := kfg.String("processor.type")
 
 	switch prType {
 	case "http_raw":
-		prConfig := processor.HttpRawConfig{}
-		if err := kfg.Unmarshal("processor.config", &prConfig); err != nil {
-			logErr.Fatalf("error parsing processor configuration: %s\n", err.Error())
+		prConfig := process.HttpRawConfig{}
+		if err := kfg.Unmarshal("process.config", &prConfig); err != nil {
+			logErr.Fatalf("error parsing process configuration: %s\n", err.Error())
 		}
 		processorConfig = prConfig
 	default:
@@ -108,7 +108,7 @@ func main() {
 		queues = append(queues, q)
 	}
 
-	prFab := processor.Fabric{}
+	prFab := process.Fabric{}
 	proc, err := prFab.Get(prType, processorConfig)
 	if err != nil {
 		logErr.Fatal("error adding processor: %s", err.Error())
