@@ -17,17 +17,29 @@
 package process
 
 import (
-	"github.com/Burmuley/priority-pubsub/internal/queue"
+	"context"
+	"errors"
+	"fmt"
+	"github.com/Burmuley/priority-pubsub/queue"
 )
 
-type Dapr struct {
-	subscriberUrl string
-	method        string
-	timeout       int64
+var (
+	ErrFail   = errors.New("process failed")
+	ErrFatal  = errors.New("process failed with fatal error")
+	ErrConfig = errors.New("configuration error")
+)
+
+type Processor interface {
+	Run(ctx context.Context, msg queue.Message) error
 }
 
-func (d *Dapr) Run(msg queue.Message) error {
+func New(config any) (Processor, error) {
+	switch cfg := config.(type) {
+	case HttpRawConfig:
+		return NewHttpRaw(cfg)
+	case HttpDaprConfig:
+		return NewHttpDapr(cfg)
+	}
 
-	//TODO implement me
-	panic("implement me")
+	return nil, fmt.Errorf("processor type %T is not supported", config)
 }

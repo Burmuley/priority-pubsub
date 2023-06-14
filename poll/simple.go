@@ -14,33 +14,16 @@
  * limitations under the License.
  */
 
-package main
+package poll
 
 import (
 	"context"
 	"errors"
-	"fmt"
-	"github.com/Burmuley/priority-pubsub/internal/process"
-	"github.com/Burmuley/priority-pubsub/internal/queue"
+	"github.com/Burmuley/priority-pubsub/process"
+	"github.com/Burmuley/priority-pubsub/queue"
 	"sync"
 	"time"
 )
-
-type PollerConfig struct {
-	Type        string `koanf:"type"`
-	Concurrency int    `koanf:"concurrency"`
-}
-
-type Poller func(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc process.Processor)
-
-func PollerFabric(poller string) (Poller, error) {
-	switch poller {
-	case "simple":
-		return SimplePoller, nil
-	}
-
-	return nil, fmt.Errorf("no such Poller function %q", poller)
-}
 
 func SimplePoller(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc process.Processor) {
 	var message queue.Message
@@ -78,7 +61,7 @@ func SimplePoller(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue,
 			procErr = proc.Run(ctx, message)
 
 			if procErr != nil {
-				if errors.As(err, &process.ErrFatal) {
+				if errors.Is(procErr, process.ErrFatal) {
 					logErr.Printf("fatal error occurred during task processing: %s\n", procErr.Error())
 					if err := messageQueue.DeleteMessage(message); err != nil {
 						logErr.Printf("error deleting message %q to the queue %q: %s\n", message.Id(), message.QueueId(), err)

@@ -60,9 +60,10 @@ type AwsSQSQueue struct {
 	queueUrl          string
 	session           *session.Session
 	visibilityTimeout int64
+	context           context.Context
 }
 
-func NewSQSQueue(_ context.Context, config AwsSQSConfig) (Queue, error) {
+func NewSQSQueue(ctx context.Context, config AwsSQSConfig) (Queue, error) {
 	if config.Name == "" {
 		return nil, fmt.Errorf("%w: parameter 'AwsSQSConfig.Name' is mandatory", ErrConfig)
 	}
@@ -90,6 +91,7 @@ func NewSQSQueue(_ context.Context, config AwsSQSConfig) (Queue, error) {
 		queueName:         config.Name,
 		visibilityTimeout: config.VisibilityTimeout,
 		session:           sess,
+		context:           ctx,
 	}
 
 	if err := q.refreshQueueUrl(); err != nil {
@@ -107,7 +109,7 @@ func (s *AwsSQSQueue) ReceiveMessage() (Message, error) {
 	svc := sqs.New(s.session)
 	msgNum := int64(1)
 
-	output, err := svc.ReceiveMessage(&sqs.ReceiveMessageInput{
+	output, err := svc.ReceiveMessageWithContext(s.context, &sqs.ReceiveMessageInput{
 		MaxNumberOfMessages: &msgNum,
 		QueueUrl:            &s.queueUrl,
 		VisibilityTimeout:   &s.visibilityTimeout,
@@ -141,7 +143,7 @@ func (s *AwsSQSQueue) DeleteMessage(m Message) error {
 
 	svc := sqs.New(s.session)
 
-	_, err := svc.DeleteMessage(&sqs.DeleteMessageInput{
+	_, err := svc.DeleteMessageWithContext(s.context, &sqs.DeleteMessageInput{
 		QueueUrl:      &s.queueUrl,
 		ReceiptHandle: &msg.receiptHandle,
 	})
@@ -162,7 +164,7 @@ func (s *AwsSQSQueue) ReturnMessage(m Message) error {
 	svc := sqs.New(s.session)
 	visTimeout := int64(0)
 
-	_, err := svc.ChangeMessageVisibility(&sqs.ChangeMessageVisibilityInput{
+	_, err := svc.ChangeMessageVisibilityWithContext(s.context, &sqs.ChangeMessageVisibilityInput{
 		QueueUrl:          &s.queueUrl,
 		ReceiptHandle:     &msg.receiptHandle,
 		VisibilityTimeout: &visTimeout,
@@ -178,7 +180,7 @@ func (s *AwsSQSQueue) ReturnMessage(m Message) error {
 func (s *AwsSQSQueue) refreshQueueUrl() error {
 	svc := sqs.New(s.session)
 
-	output, err := svc.GetQueueUrl(&sqs.GetQueueUrlInput{QueueName: &s.queueName})
+	output, err := svc.GetQueueUrlWithContext(s.context, &sqs.GetQueueUrlInput{QueueName: &s.queueName})
 	if err != nil {
 		return err
 	}

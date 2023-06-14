@@ -19,32 +19,37 @@ package process
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
-	"github.com/Burmuley/priority-pubsub/internal/helpers"
-	"github.com/Burmuley/priority-pubsub/internal/queue"
+	"github.com/Burmuley/priority-pubsub/helpers"
+	"github.com/Burmuley/priority-pubsub/queue"
 	"net/http"
 	"time"
 )
 
 const (
-	RawDefaultHTTPMethod = "POST"
-	RawDefaultTimeout    = 120
+	HttpDaprDefaultHTTPMethod = "POST"
+	HttpDaprDefaultTimeout    = 120
 )
 
-type HttpRawConfig struct {
+type snsEnvelope struct {
+	Message string `json:"Message"`
+}
+
+type HttpDaprConfig struct {
 	SubscriberUrl string `koanf:"subscriber_url"`
 	Method        string `koanf:"method"`
 	Timeout       int    `koanf:"timeout"`
 	FatalCodes    []int  `koanf:"fatal_codes"`
 }
 
-type HttpRaw struct {
-	config HttpRawConfig
+type HttpDapr struct {
+	config HttpDaprConfig
 }
 
-func NewHttpRaw(config HttpRawConfig) (*HttpRaw, error) {
+func NewHttpDapr(config HttpDaprConfig) (*HttpDapr, error) {
 	if config.Method == "" {
-		config.Method = RawDefaultHTTPMethod
+		config.Method = HttpDaprDefaultHTTPMethod
 	}
 
 	supMethods := []string{"GET", "POST"}
@@ -58,43 +63,53 @@ func NewHttpRaw(config HttpRawConfig) (*HttpRaw, error) {
 	}
 
 	if config.Timeout == 0 {
-		config.Timeout = RawDefaultTimeout
+		config.Timeout = HttpDaprDefaultTimeout
 	}
 
-	raw := &HttpRaw{
+	dapr := &HttpDapr{
 		config: config,
 	}
 
-	return raw, nil
+	return dapr, nil
 }
 
-func (r *HttpRaw) Run(ctx context.Context, msg queue.Message) error {
-	client := http.Client{
-		Timeout: time.Duration(r.config.Timeout) * time.Second,
-	}
-
-	req, err := http.NewRequestWithContext(ctx, r.config.Method, r.config.SubscriberUrl, bytes.NewBuffer(msg.Data()))
-	if err != nil {
-		return fmt.Errorf("%w: %q", ErrFatal, err.Error())
-	}
-
+func (d *HttpDapr) Run(ctx context.Context, msg queue.Message) error {
 	resChan := make(chan error)
 
+	// parse SNS envelope
+	snsData := &snsEnvelope{}
+	err := json.Unmarshal(msg.Data(), snsData)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrFatal, err)
+	}
+
 	go func() {
+		client := http.Client{
+			Timeout: time.Duration(d.config.Timeout) * time.Second,
+		}
+
+		req, err := http.NewRequestWithContext(ctx, d.config.Method, d.config.SubscriberUrl, bytes.NewBuffer([]byte(snsData.Message)))
+		if err != nil {
+			resChan <- fmt.Errorf("%w: %q", ErrFatal, err.Error())
+			close(resChan)
+			return
+		}
+		req.Header.Add("content-type", "application/json")
+
 		resp, err := client.Do(req)
 		if err != nil {
-			resChan <- fmt.Errorf("%w: %q", ErrFail, err.Error())
+			resChan <- fmt.Errorf("%w: %w", ErrFail, err)
 			close(resChan)
 			return
 		}
 
-		if helpers.ItemInSlice(resp.StatusCode, r.config.FatalCodes) {
+		if helpers.ItemInSlice(resp.StatusCode, d.config.FatalCodes) {
 			resChan <- fmt.Errorf("%w: response status code %q", ErrFatal, resp.StatusCode)
 			close(resChan)
 			return
 		}
 
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if resp.StatusCode > 200 && resp.StatusCode < 300 {
 			resChan <- fmt.Errorf("%w: task execution has failed", ErrFail)
 			close(resChan)
 			return

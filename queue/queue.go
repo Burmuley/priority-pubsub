@@ -44,23 +44,13 @@ type Queue interface {
 	ReturnMessage(m Message) error
 }
 
-type Fabric struct{}
-
-func (f Fabric) Get(ctx context.Context, qType string, config any) (Queue, error) {
-	switch qType {
-	case "aws_sqs":
-		cfg, ok := config.(AwsSQSConfig)
-		if !ok {
-			return nil, fmt.Errorf("%w: AwsSQSConfig value expected", ErrConfig)
-		}
+func New(ctx context.Context, config any) (Queue, error) {
+	switch cfg := config.(type) {
+	case AwsSQSConfig:
 		return NewSQSQueue(ctx, cfg)
-	case "gcp_pubsub":
-		cfg, ok := config.(GcpPubSubConfig)
-		if !ok {
-			return nil, fmt.Errorf("%w: GcpPubSubConfig value expected", ErrConfig)
-		}
+	case GcpPubSubConfig:
 		return NewGcpPubSubQueue(ctx, cfg)
 	}
 
-	return nil, fmt.Errorf("queue type %s is not supported", qType)
+	return nil, fmt.Errorf("queue type %T is not supported", config)
 }
