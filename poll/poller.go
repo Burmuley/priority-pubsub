@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/Burmuley/priority-pubsub/process"
 	"github.com/Burmuley/priority-pubsub/queue"
+	"github.com/Burmuley/priority-pubsub/transform"
 	"log"
 	"os"
 	"os/signal"
@@ -43,10 +44,11 @@ type LaunchConfig struct {
 	Poller          Poller
 	Processor       process.Processor
 	QueueCancelFunc context.CancelFunc
+	TransformFunc   transform.TransformationFunc
 	Concurrency     int
 }
 
-type Poller func(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc process.Processor)
+type Poller func(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc process.Processor, trans transform.TransformationFunc)
 
 func New(poller string) (Poller, error) {
 	switch poller {
@@ -62,7 +64,7 @@ func Run(cfg LaunchConfig) {
 	prCtx, prCancel := context.WithCancel(context.Background())
 
 	for i := 0; i < cfg.Concurrency; i++ {
-		go cfg.Poller(prCtx, wg, cfg.Queues, cfg.Processor)
+		go cfg.Poller(prCtx, wg, cfg.Queues, cfg.Processor, cfg.TransformFunc)
 		wg.Add(1)
 	}
 

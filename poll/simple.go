@@ -21,11 +21,12 @@ import (
 	"errors"
 	"github.com/Burmuley/priority-pubsub/process"
 	"github.com/Burmuley/priority-pubsub/queue"
+	"github.com/Burmuley/priority-pubsub/transform"
 	"sync"
 	"time"
 )
 
-func SimplePoller(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc process.Processor) {
+func SimplePoller(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue, proc process.Processor, trans transform.TransformationFunc) {
 	var message queue.Message
 	var procErr, err error
 
@@ -44,7 +45,6 @@ func SimplePoller(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue,
 			message, err = receiveMessage(queues)
 			if err != nil {
 				if errors.Is(err, queue.ErrNoMessages) {
-					logInfo.Println("no messages received from all queues")
 					time.Sleep(2 * time.Second)
 					continue
 				}
@@ -58,7 +58,7 @@ func SimplePoller(ctx context.Context, wg *sync.WaitGroup, queues []queue.Queue,
 			logInfo.Printf("processing message %q from %q\n", message.Id(), message.QueueId())
 
 			messageQueue := queueNames[message.QueueId()]
-			procErr = proc.Run(ctx, message)
+			procErr = proc.Run(ctx, message, trans)
 
 			if procErr != nil {
 				if errors.Is(procErr, process.ErrFatal) {

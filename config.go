@@ -24,6 +24,7 @@ import (
 	"github.com/Burmuley/priority-pubsub/poll"
 	"github.com/Burmuley/priority-pubsub/process"
 	"github.com/Burmuley/priority-pubsub/queue"
+	"github.com/Burmuley/priority-pubsub/transform"
 	koanfjson "github.com/knadh/koanf/parsers/json"
 	koanffile "github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
@@ -42,7 +43,7 @@ func getPollLaunchConfig() (*poll.LaunchConfig, error) {
 	cfgFile := koanffile.Provider(configFileName)
 	kParser := koanfjson.Parser()
 	if err := kfg.Load(cfgFile, kParser); err != nil {
-		return nil, fmt.Errorf("error loading configuration file: %s\n", err.Error())
+		return nil, fmt.Errorf("error loading configuration file: %w\n", err)
 	}
 
 	queueCtx, queueCancel := context.WithCancel(context.Background())
@@ -50,7 +51,16 @@ func getPollLaunchConfig() (*poll.LaunchConfig, error) {
 	// reading poller parameters
 	pollConfig := poll.Config{}
 	if err := kfg.Unmarshal("poller", &pollConfig); err != nil {
-		return nil, fmt.Errorf("error parsing 'poller' configuration: %s", err.Error())
+		return nil, fmt.Errorf("error parsing 'poller' configuration: %w", err)
+	}
+
+	transConfig := transform.Config{}
+	if !kfg.Exists("transformer") {
+		transConfig.Type = ""
+	} else {
+		if err := kfg.Unmarshal("transformer", &transConfig); err != nil {
+			return nil, fmt.Errorf("error parsing 'transform' configuration: %w", err)
+		}
 	}
 
 	// getting queues configuration
@@ -60,13 +70,13 @@ func getPollLaunchConfig() (*poll.LaunchConfig, error) {
 	case "aws_sqs":
 		var qConfig []queue.AwsSQSConfig
 		if err := kfg.Unmarshal("queues.config", &qConfig); err != nil {
-			return nil, fmt.Errorf("error parsing queues configuration: %s\n", err.Error())
+			return nil, fmt.Errorf("error parsing queues configuration: %w\n", err)
 		}
 		helpers.CopySliceElems(qConfig, &queueConfig)
 	case "gcp_pubsub":
 		var qConfig []queue.GcpPubSubConfig
 		if err := kfg.Unmarshal("queues.config", &qConfig); err != nil {
-			return nil, fmt.Errorf("error parsing queues configuration: %s\n", err.Error())
+			return nil, fmt.Errorf("error parsing queues configuration: %w\n", err)
 		}
 		helpers.CopySliceElems(qConfig, &queueConfig)
 	default:
@@ -77,16 +87,10 @@ func getPollLaunchConfig() (*poll.LaunchConfig, error) {
 	prType := kfg.String("processor.type")
 
 	switch prType {
-	case "http_raw":
-		prConfig := process.HttpRawConfig{}
+	case "http":
+		prConfig := process.HttpConfig{}
 		if err := kfg.Unmarshal("processor.config", &prConfig); err != nil {
-			return nil, fmt.Errorf("error parsing process configuration: %s\n", err.Error())
-		}
-		processorConfig = prConfig
-	case "http_dapr":
-		prConfig := process.HttpDaprConfig{}
-		if err := kfg.Unmarshal("processor.config", &prConfig); err != nil {
-			return nil, fmt.Errorf("error parsing process configuration: %s\n", err.Error())
+			return nil, fmt.Errorf("error parsing process configuration: %w\n", err)
 		}
 		processorConfig = prConfig
 	default:
@@ -97,21 +101,29 @@ func getPollLaunchConfig() (*poll.LaunchConfig, error) {
 	for _, v := range queueConfig {
 		q, err := queue.New(queueCtx, v)
 		if err != nil {
-			return nil, fmt.Errorf("error adding queue: %s\n", err.Error())
+			return nil, fmt.Errorf("error adding queue: %w\n", err)
 		}
 		queues = append(queues, q)
 	}
 
 	proc, err := process.New(processorConfig)
 	if err != nil {
-		return nil, fmt.Errorf("error adding processor: %s", err.Error())
+		return nil, fmt.Errorf("error adding processor: %w", err)
 	}
 
 	var pollFunc poll.Poller
 	{
 		var err error
 		if pollFunc, err = poll.New(pollConfig.Type); err != nil {
-			return nil, fmt.Errorf("error initializing poller: %s", err.Error())
+			return nil, fmt.Errorf("error initializing poller: %w", err)
+		}
+	}
+
+	var transFunc transform.TransformationFunc
+	{
+		var err error
+		if transFunc, err = transform.New(transConfig.Type); err != nil {
+			return nil, err
 		}
 	}
 
@@ -119,6 +131,7 @@ func getPollLaunchConfig() (*poll.LaunchConfig, error) {
 		Queues:          queues,
 		Poller:          pollFunc,
 		Processor:       proc,
+		TransformFunc:   transFunc,
 		QueueCancelFunc: queueCancel,
 		Concurrency:     pollConfig.Concurrency,
 	}, nil

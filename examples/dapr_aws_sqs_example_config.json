@@ -21,12 +21,16 @@
     ]
   },
   "processor": {
-    "type": "http_dapr",
+    "type": "http",
     "config": {
       "subscriber_url": "http://localhost:5000/",
       "method": "POST",
       "timeout": 570,
-      "fatal_codes": [415, 450]
+      "fatal_codes": [415, 450],
+      "content_type": "application/json"
     }
+  },
+  "transformer": {
+    "type": "dapr_aws"
   }
 }

@@ -11,6 +11,9 @@ You can define your own `Poller` implementation in the code and implement your o
 Each `Poller` should consume only one message and block until `Processor` return the result (or error).
 With this you can control number of concurrent messages your application can handle in parallel.
 
+You can also add a `TransformationFunc` for message data to adjust contents of the message data before sending it to the
+application.
+
 Currently supported queues:
 * AWS SQS
 * GCP Pub/Sub
@@ -55,6 +58,9 @@ The default configuration file name is `config.json`.
     "config": {
       "PROCESSOR SPECIFIC CONFIG"
     }
+  },
+  "transformer": {
+    "type": "TRANSFORMER FUNCTION NAME"
   }
 }
 ```
@@ -64,12 +70,16 @@ Configuration fields for `poller`:
 * `concurrency`: number of concurrent `Poller` instances to run
 
 Configuration fields for `processor`:
-* `type` - type of the `Processor` to use for message processing; available values - `http_raw` and `http_dapr`
-* `config` - processor specific configuration; currently both available `Processor` implementation support the same options:
+* `type` - type of the `Processor` to use for message processing; available values - `http`
+* `config` - processor specific configuration; currently the only available `Processor` implementation support the following options:
    - `subscriber_url` - hte HTTP URL to forward messages for processing
    - `method` - HTTP method to use when submitting message to `subscriber_url`; default - `POST`
    - `timeout` - HTTP timeout to use, i.e. time to wait for message to be processed before failing the operation
    - `fatal_codes` - list of HTTP codes assumed as `Fatal`, i.e. when message should not be returned back to the queue for retry
+   - `content_type` - the `content-type` HTTP header value to use when ppotings messages to the target application; default value - `text/plain`
+
+Configuration fields for `transformer`:
+* `type` - name of the transformer function; currently only one value is available - `dapr_aws`
 
 Configuration fields for `queues`:
 * `type` - queue type; currently supported `awssqs` (AWS SQS) and `gcppubsub` (GCP Pub/Sub)
@@ -108,7 +118,7 @@ Configuration fields for `gcppubsub` queue type:
     ]
   },
   "processor": {
-    "type": "http_raw",
+    "type": "http",
     "config": {
       "subscriber_url": "http://localhost:5000/",
       "method": "POST",
@@ -137,7 +147,7 @@ Configuration fields for `gcppubsub` queue type:
     ]
   },
   "processor": {
-    "type": "http_raw",
+    "type": "http",
     "config": {
       "subscriber_url": "http://localhost:5000/",
       "method": "POST",
@@ -148,5 +158,41 @@ Configuration fields for `gcppubsub` queue type:
 }
 ```
 
+#### Configuration example for AWS SQS with LocalStack and Dapr as publisher:
+```json
+{
+  "poll_concurrency": 4,
+  "queues": {
+    "type": "aws_sqs",
+    "config": [
+      {
+        "name": "high-priority",
+        "visibility_timeout": 600,
+        "endpoint": "http://localhost:4566",
+        "region": "us-west-2"
+      },
+      {
+        "name": "low-priority",
+        "visibility_timeout": 600,
+        "endpoint": "http://localhost:4566",
+        "region": "us-west-2"
+      }
+    ]
+  },
+  "processor": {
+    "type": "http",
+    "config": {
+      "subscriber_url": "http://localhost:5000/",
+      "method": "POST",
+      "timeout": 570,
+      "fatal_codes": [412, 450]
+    }
+  },
+  "transformer": {
+    "type": "dapr_aws"
+  }
+}
+```
+
 **Note**: I wasn't able to make work lightweight `SubscriptionClient` with Pub/Sub emulator, 
-to test it out you need to create reals resources in GCP.
+to test it out you need to create real resources in GCP.

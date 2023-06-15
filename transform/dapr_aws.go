@@ -14,31 +14,23 @@
  * limitations under the License.
  */
 
-package process
+package transform
 
 import (
-	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
-	"github.com/Burmuley/priority-pubsub/queue"
-	"github.com/Burmuley/priority-pubsub/transform"
 )
 
-var (
-	ErrFail   = errors.New("process failed")
-	ErrFatal  = errors.New("process failed with fatal error")
-	ErrConfig = errors.New("configuration error")
-)
-
-type Processor interface {
-	Run(ctx context.Context, msg queue.Message, f transform.TransformationFunc) error
-}
-
-func New(config any) (Processor, error) {
-	switch cfg := config.(type) {
-	case HttpConfig:
-		return NewHttp(cfg)
+func DaprAws(b []byte) ([]byte, error) {
+	// parse SNS envelope
+	var snsEnvelope struct {
+		Message string `json:"Message"`
 	}
 
-	return nil, fmt.Errorf("processor type %T is not supported", config)
+	err := json.Unmarshal(b, &snsEnvelope)
+	if err != nil {
+		return nil, fmt.Errorf("data transformation error: %w", err)
+	}
+
+	return []byte(snsEnvelope.Message), nil
 }

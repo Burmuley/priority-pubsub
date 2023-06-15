@@ -19,37 +19,35 @@ package process
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/Burmuley/priority-pubsub/helpers"
 	"github.com/Burmuley/priority-pubsub/queue"
+	"github.com/Burmuley/priority-pubsub/transform"
 	"net/http"
 	"time"
 )
 
 const (
-	HttpDaprDefaultHTTPMethod = "POST"
-	HttpDaprDefaultTimeout    = 120
+	HttpDefaultMethod      = "POST"
+	HttpDefaultTimeout     = 120
+	HttpDefaultContentType = "text/plain"
 )
 
-type snsEnvelope struct {
-	Message string `json:"Message"`
-}
-
-type HttpDaprConfig struct {
+type HttpConfig struct {
 	SubscriberUrl string `koanf:"subscriber_url"`
 	Method        string `koanf:"method"`
 	Timeout       int    `koanf:"timeout"`
 	FatalCodes    []int  `koanf:"fatal_codes"`
+	ContentType   string `koanf:"content_type"`
 }
 
-type HttpDapr struct {
-	config HttpDaprConfig
+type Http struct {
+	config HttpConfig
 }
 
-func NewHttpDapr(config HttpDaprConfig) (*HttpDapr, error) {
+func NewHttp(config HttpConfig) (*Http, error) {
 	if config.Method == "" {
-		config.Method = HttpDaprDefaultHTTPMethod
+		config.Method = HttpDefaultMethod
 	}
 
 	supMethods := []string{"GET", "POST"}
@@ -59,57 +57,66 @@ func NewHttpDapr(config HttpDaprConfig) (*HttpDapr, error) {
 	}
 
 	if config.SubscriberUrl == "" {
-		return nil, fmt.Errorf("%w: field 'SubscriberUrl' is mandatory", ErrConfig)
+		return nil, fmt.Errorf("%w: field 'subscriber_url' is mandatory", ErrConfig)
 	}
 
 	if config.Timeout == 0 {
-		config.Timeout = HttpDaprDefaultTimeout
+		config.Timeout = HttpDefaultTimeout
 	}
 
-	dapr := &HttpDapr{
+	if config.ContentType == "" {
+		config.ContentType = HttpDefaultContentType
+	}
+
+	raw := &Http{
 		config: config,
 	}
 
-	return dapr, nil
+	return raw, nil
 }
 
-func (d *HttpDapr) Run(ctx context.Context, msg queue.Message) error {
+func (r *Http) Run(ctx context.Context, msg queue.Message, trans transform.TransformationFunc) error {
 	resChan := make(chan error)
+	data := msg.Data()
 
-	// parse SNS envelope
-	snsData := &snsEnvelope{}
-	err := json.Unmarshal(msg.Data(), snsData)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrFatal, err)
+	{
+		var err error
+		if trans != nil {
+			data, err = trans(data)
+			if err != nil {
+				return fmt.Errorf("%w: %w", ErrFatal, err)
+			}
+		}
 	}
 
 	go func() {
 		client := http.Client{
-			Timeout: time.Duration(d.config.Timeout) * time.Second,
+			Timeout: time.Duration(r.config.Timeout) * time.Second,
 		}
 
-		req, err := http.NewRequestWithContext(ctx, d.config.Method, d.config.SubscriberUrl, bytes.NewBuffer([]byte(snsData.Message)))
+		req, err := http.NewRequestWithContext(ctx, r.config.Method, r.config.SubscriberUrl, bytes.NewBuffer(data))
 		if err != nil {
 			resChan <- fmt.Errorf("%w: %q", ErrFatal, err.Error())
 			close(resChan)
 			return
 		}
-		req.Header.Add("content-type", "application/json")
+		req.Header.Add("content-type", r.config.ContentType)
 
 		resp, err := client.Do(req)
 		if err != nil {
-			resChan <- fmt.Errorf("%w: %w", ErrFail, err)
+			resChan <- fmt.Errorf("%w: %q", ErrFail, err.Error())
 			close(resChan)
 			return
 		}
+		req.Header.Add("content-type", r.config.ContentType)
 
-		if helpers.ItemInSlice(resp.StatusCode, d.config.FatalCodes) {
+		if helpers.ItemInSlice(resp.StatusCode, r.config.FatalCodes) {
 			resChan <- fmt.Errorf("%w: response status code %q", ErrFatal, resp.StatusCode)
 			close(resChan)
 			return
 		}
 
-		if resp.StatusCode > 200 && resp.StatusCode < 300 {
+		if !(resp.StatusCode >= 200 && resp.StatusCode < 300) {
 			resChan <- fmt.Errorf("%w: task execution has failed", ErrFail)
 			close(resChan)
 			return

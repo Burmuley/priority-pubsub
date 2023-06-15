@@ -21,7 +21,7 @@
     ]
   },
   "processor": {
-    "type": "http_raw",
+    "type": "http",
     "config": {
       "subscriber_url": "http://localhost:5000/",
       "method": "POST",

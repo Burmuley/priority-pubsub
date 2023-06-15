@@ -14,31 +14,25 @@
  * limitations under the License.
  */
 
-package process
+package transform
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"github.com/Burmuley/priority-pubsub/queue"
-	"github.com/Burmuley/priority-pubsub/transform"
 )
 
-var (
-	ErrFail   = errors.New("process failed")
-	ErrFatal  = errors.New("process failed with fatal error")
-	ErrConfig = errors.New("configuration error")
-)
-
-type Processor interface {
-	Run(ctx context.Context, msg queue.Message, f transform.TransformationFunc) error
+type Config struct {
+	Type string `koanf:"type"`
 }
 
-func New(config any) (Processor, error) {
-	switch cfg := config.(type) {
-	case HttpConfig:
-		return NewHttp(cfg)
+type TransformationFunc func(d []byte) ([]byte, error)
+
+func New(fn string) (TransformationFunc, error) {
+	switch fn {
+	case "dapr_aws":
+		return DaprAws, nil
+	case "":
+		return nil, nil
 	}
 
-	return nil, fmt.Errorf("processor type %T is not supported", config)
+	return nil, fmt.Errorf("invalid transformation function requested: %s", fn)
 }
