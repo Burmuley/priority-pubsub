@@ -20,10 +20,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/Burmuley/priority-pubsub/helpers"
 	"github.com/Burmuley/priority-pubsub/queue"
 	"github.com/Burmuley/priority-pubsub/transform"
 	"net/http"
+	"slices"
 	"time"
 )
 
@@ -52,7 +52,7 @@ func NewHttp(config HttpConfig) (*Http, error) {
 
 	supMethods := []string{"GET", "POST"}
 
-	if !helpers.ItemInSlice(config.Method, supMethods) {
+	if !slices.Contains(supMethods, config.Method) {
 		return nil, fmt.Errorf("%w: method %q is not supported", ErrConfig, config.Method)
 	}
 
@@ -110,7 +110,7 @@ func (r *Http) Run(ctx context.Context, msg queue.Message, trans transform.Trans
 		}
 		req.Header.Add("content-type", r.config.ContentType)
 
-		if helpers.ItemInSlice(resp.StatusCode, r.config.FatalCodes) {
+		if slices.Contains(r.config.FatalCodes, resp.StatusCode) {
 			resChan <- fmt.Errorf("%w: response status code %q", ErrFatal, resp.StatusCode)
 			close(resChan)
 			return
