@@ -20,7 +20,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/Burmuley/priority-pubsub/helpers"
 	"github.com/Burmuley/priority-pubsub/poll"
 	"github.com/Burmuley/priority-pubsub/process"
 	"github.com/Burmuley/priority-pubsub/queue"
@@ -72,13 +71,13 @@ func getPollLaunchConfig() (*poll.LaunchConfig, error) {
 		if err := kfg.Unmarshal("queues.config", &qConfig); err != nil {
 			return nil, fmt.Errorf("error parsing queues configuration: %w\n", err)
 		}
-		helpers.CopySliceElems(qConfig, &queueConfig)
+		copySliceElems(qConfig, &queueConfig)
 	case "gcp_pubsub":
 		var qConfig []queue.GcpPubSubConfig
 		if err := kfg.Unmarshal("queues.config", &qConfig); err != nil {
 			return nil, fmt.Errorf("error parsing queues configuration: %w\n", err)
 		}
-		helpers.CopySliceElems(qConfig, &queueConfig)
+		copySliceElems(qConfig, &queueConfig)
 	default:
 		return nil, fmt.Errorf("unknown queue type %s", qType)
 	}
@@ -135,4 +134,10 @@ func getPollLaunchConfig() (*poll.LaunchConfig, error) {
 		QueueCancelFunc: queueCancel,
 		Concurrency:     pollConfig.Concurrency,
 	}, nil
+}
+
+func copySliceElems[T any](source []T, target *[]any) {
+	for _, v := range source {
+		*target = append(*target, v)
+	}
 }
